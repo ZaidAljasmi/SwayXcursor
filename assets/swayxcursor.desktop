@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=SwayXcursor
+Comment=Manage your XCursor themes on Sway
+Exec=swayxcursor
+Icon=swayxcursor
+Terminal=false
+Categories=Settings;System;
+StartupWMClass=swayxcursor
