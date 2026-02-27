@@ -99,32 +99,41 @@ static void load_themes(void) {
 static void apply_theme_action(GtkWidget *widget, gpointer data) {
   char cmd[512], config_file[512], buffer[2048], *lines[2048];
   int line_count = 0, found = 0;
+  const char *theme_name = themes[selected_idx].name;
 
   snprintf(cmd, sizeof(cmd), "swaymsg seat seat0 xcursor_theme %s %d",
-           themes[selected_idx].name, cursor_size);
+           theme_name, cursor_size);
+  system(cmd);
+
+  snprintf(cmd, sizeof(cmd),
+           "gsettings set org.gnome.desktop.interface cursor-theme '%s' && "
+           "gsettings set org.gnome.desktop.interface cursor-size %d",
+           theme_name, cursor_size);
   system(cmd);
 
   snprintf(config_file, sizeof(config_file), "%s/%s", getenv("HOME"),
            CONFIG_PATH);
+
   FILE *fp = fopen(config_file, "r");
   if (fp) {
     while (fgets(buffer, sizeof(buffer), fp) && line_count < 2048) {
       if (strstr(buffer, "seat") && strstr(buffer, "xcursor_theme")) {
         snprintf(buffer, sizeof(buffer), "seat seat0 xcursor_theme %s %d\n",
-                 themes[selected_idx].name, cursor_size);
+                 theme_name, cursor_size);
         found = 1;
       }
       lines[line_count++] = strdup(buffer);
     }
     fclose(fp);
+
     if ((fp = fopen(config_file, "w"))) {
       for (int i = 0; i < line_count; i++) {
         fputs(lines[i], fp);
         free(lines[i]);
       }
       if (!found)
-        fprintf(fp, "\nseat seat0 xcursor_theme %s %d\n",
-                themes[selected_idx].name, cursor_size);
+        fprintf(fp, "\nseat seat0 xcursor_theme %s %d\n", theme_name,
+                cursor_size);
       fclose(fp);
     }
   }
