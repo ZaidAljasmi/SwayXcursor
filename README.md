@@ -19,7 +19,6 @@
 <div align="center">
   <table>
     <tr>
-      <!-- <td><img src="screenshots/screenshot1.png" width="400px"></td> -->
       <td><img src="screenshots/screenshot2.gif" width="400px"></td>
     </tr>
   </table>
@@ -33,8 +32,7 @@
 sudo apt install build-essential libgtk-4-dev pkg-config libxcursor-dev
 cd ~/swayxcursor
 sudo make clean install
-swaymsg reload
-swayxcursor # Or launch it via wofi or any app launcher of your choice
+swayxcursor # or launch it via your preferred app launcher
 ```
 <!-- --- -->
 
