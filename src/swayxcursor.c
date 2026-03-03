@@ -7,7 +7,6 @@
 #include <string.h>
 #include <sys/stat.h>
 
-#define ICON_PATH "/usr/share/icons"
 #define CONFIG_PATH ".config/sway/config"
 #define MAX_THEMES 256
 
@@ -53,13 +52,10 @@ static void update_preview() {
     }
 
     GdkTexture *texture = gdk_texture_new_for_pixbuf(pixbuf);
-
     gtk_picture_set_content_fit(GTK_PICTURE(preview_image),
                                 GTK_CONTENT_FIT_CONTAIN);
-
     gtk_widget_set_valign(preview_image, GTK_ALIGN_CENTER);
     gtk_widget_set_halign(preview_image, GTK_ALIGN_CENTER);
-
     gtk_picture_set_paintable(GTK_PICTURE(preview_image),
                               GDK_PAINTABLE(texture));
 
@@ -75,49 +71,73 @@ static void update_preview() {
   gtk_label_set_text(GTK_LABEL(size_label), sz_text);
 }
 
-static void load_themes(void) {
-  DIR *dir = opendir(ICON_PATH);
+static void scan_dir(const char *basedir) {
+  DIR *dir = opendir(basedir);
   struct dirent *entry;
   if (!dir)
     return;
+
   while ((entry = readdir(dir)) && theme_count < MAX_THEMES) {
     if (entry->d_name[0] == '.')
       continue;
     char full_path[2048], cursors_dir[2048];
-    snprintf(full_path, sizeof(full_path), "%s/%s", ICON_PATH, entry->d_name);
+    snprintf(full_path, sizeof(full_path), "%s/%s", basedir, entry->d_name);
     snprintf(cursors_dir, sizeof(cursors_dir), "%s/cursors", full_path);
     struct stat st;
     if (stat(cursors_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
-      strncpy(themes[theme_count].name, entry->d_name, 255);
-      strncpy(themes[theme_count].path, full_path, 511);
+      strncpy(themes[theme_count].name, entry->d_name,
+              sizeof(themes[0].name) - 1);
+      strncpy(themes[theme_count].path, full_path, sizeof(themes[0].path) - 1);
       theme_count++;
     }
   }
   closedir(dir);
 }
 
+static void load_themes(void) {
+  char local_icons[1024];
+  scan_dir("/usr/share/icons");
+  snprintf(local_icons, sizeof(local_icons), "%s/.icons", getenv("HOME"));
+  scan_dir(local_icons);
+  snprintf(local_icons, sizeof(local_icons), "%s/.local/share/icons",
+           getenv("HOME"));
+  scan_dir(local_icons);
+}
+
 static void apply_theme_action(GtkWidget *widget, gpointer data) {
-  char cmd[512], config_file[512], buffer[2048], *lines[2048];
+  if (selected_idx < 0 || selected_idx >= theme_count)
+    return;
+
+  char config_file[1024], buffer[2048], *lines[2048];
   int line_count = 0, found = 0;
   const char *theme_name = themes[selected_idx].name;
 
-  snprintf(cmd, sizeof(cmd), "swaymsg seat seat0 xcursor_theme %s %d",
-           theme_name, cursor_size);
-  system(cmd);
+  char *sway_cmd = g_strdup_printf("swaymsg seat seat0 xcursor_theme %s %d",
+                                   theme_name, cursor_size);
+  g_spawn_command_line_async(sway_cmd, NULL);
+  g_free(sway_cmd);
 
-  snprintf(cmd, sizeof(cmd),
-           "gsettings set org.gnome.desktop.interface cursor-theme '%s' && "
-           "gsettings set org.gnome.desktop.interface cursor-size %d",
-           theme_name, cursor_size);
-  system(cmd);
+  char *gs_cmd = g_strdup_printf(
+      "gsettings set org.gnome.desktop.interface cursor-theme '%s'",
+      theme_name);
+  g_spawn_command_line_async(gs_cmd, NULL);
+  g_free(gs_cmd);
+
+  char *gs_sz_cmd = g_strdup_printf(
+      "gsettings set org.gnome.desktop.interface cursor-size %d", cursor_size);
+  g_spawn_command_line_async(gs_sz_cmd, NULL);
+  g_free(gs_sz_cmd);
 
   snprintf(config_file, sizeof(config_file), "%s/%s", getenv("HOME"),
            CONFIG_PATH);
-
   FILE *fp = fopen(config_file, "r");
   if (fp) {
     while (fgets(buffer, sizeof(buffer), fp) && line_count < 2048) {
-      if (strstr(buffer, "seat") && strstr(buffer, "xcursor_theme")) {
+      char *trimmed = buffer;
+      while (*trimmed == ' ' || *trimmed == '\t')
+        trimmed++;
+      if (*trimmed != '#' && strstr(buffer, "seat") &&
+          strstr(buffer, "xcursor_theme")) {
         snprintf(buffer, sizeof(buffer), "seat seat0 xcursor_theme %s %d\n",
                  theme_name, cursor_size);
         found = 1;
@@ -132,7 +152,7 @@ static void apply_theme_action(GtkWidget *widget, gpointer data) {
         free(lines[i]);
       }
       if (!found)
-        fprintf(fp, "\nseat seat0 xcursor_theme %s %d\n", theme_name,
+        fprintf(fp, "seat seat0 xcursor_theme %s %d\n", theme_name,
                 cursor_size);
       fclose(fp);
     }
@@ -172,18 +192,12 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_widget_set_halign(header_hbox, GTK_ALIGN_CENTER);
 
   GtkWidget *preview_frame = gtk_frame_new(NULL);
-  gtk_widget_set_size_request(preview_frame, 0, 0);
-
   preview_image = gtk_picture_new();
-  gtk_widget_set_halign(preview_image, GTK_ALIGN_CENTER);
-  gtk_widget_set_valign(preview_image, GTK_ALIGN_CENTER);
-
   gtk_picture_set_content_fit(GTK_PICTURE(preview_image),
                               GTK_CONTENT_FIT_CONTAIN);
   gtk_frame_set_child(GTK_FRAME(preview_frame), preview_image);
 
   GtkWidget *size_ctrl = gtk_box_new(GTK_ORIENTATION_VERTICAL, 5);
-  gtk_widget_set_valign(size_ctrl, GTK_ALIGN_CENTER);
   GtkWidget *btn_inc = gtk_button_new_with_label("+");
   GtkWidget *btn_dec = gtk_button_new_with_label("-");
   size_label = gtk_label_new("24");
@@ -196,7 +210,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_box_append(GTK_BOX(size_ctrl), btn_inc);
   gtk_box_append(GTK_BOX(size_ctrl), size_label);
   gtk_box_append(GTK_BOX(size_ctrl), btn_dec);
-
   gtk_box_append(GTK_BOX(header_hbox), preview_frame);
   gtk_box_append(GTK_BOX(header_hbox), size_ctrl);
   gtk_box_append(GTK_BOX(main_vbox), header_hbox);
@@ -207,9 +220,8 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(scroll), list_box);
   gtk_box_append(GTK_BOX(main_vbox), scroll);
 
-  for (int i = 0; i < theme_count; i++) {
+  for (int i = 0; i < theme_count; i++)
     gtk_list_box_append(GTK_LIST_BOX(list_box), gtk_label_new(themes[i].name));
-  }
 
   GtkWidget *apply_btn = gtk_button_new_with_label("Apply Theme");
   gtk_widget_add_css_class(apply_btn, "suggested-action");
@@ -217,7 +229,6 @@ static void activate(GtkApplication *app, gpointer user_data) {
   gtk_box_append(GTK_BOX(main_vbox), apply_btn);
 
   g_signal_connect(list_box, "row-selected", G_CALLBACK(on_row_selected), NULL);
-
   update_preview();
   gtk_window_present(GTK_WINDOW(window));
 }
