@@ -32,7 +32,7 @@
 sudo apt install build-essential libgtk-4-dev pkg-config libxcursor-dev
 cd ~/swayxcursor
 sudo make clean install
-swayxcursor # or launch it via your preferred app launcher
+swayxcursor # or launch it via your preferred app launcher.
 ```
 <!-- --- -->
 
